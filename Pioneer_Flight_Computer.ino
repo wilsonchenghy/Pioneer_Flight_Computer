@@ -4,6 +4,8 @@
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
 #include "Wire.h"
 #endif
+#include <SPI.h>
+#include <SD.h>
 
 enum State {
   POWER_ON, // blue led on
@@ -24,6 +26,7 @@ State currentState = POWER_ON;
 #define RED_LED_PIN 9
 #define MOSFET_PIN 3 // N-Channel MOSFET
 #define PARACHUTE_EJECTION_PIN 4
+#define MICRO_SD_CARD_CS_PIN 10
 
 // Time
 unsigned long currentTime;
@@ -85,6 +88,11 @@ Servo parachuteEjectionServo;
 
 
 
+/////// Micro SD Card Module ///////
+File dataFile;
+
+
+
 //////////////// SETUP ////////////////
 void setup() {
   pinMode(BLUE_LED_PIN, OUTPUT);
@@ -99,7 +107,6 @@ void setup() {
   parachuteEjectionServo.attach(PARACHUTE_EJECTION_PIN);
 
   Serial.begin(115200);
-  // while (!Serial);
 
   switch (currentState) {
     case POWER_ON:
@@ -125,19 +132,31 @@ void setup() {
       while (!mpu.testConnection()) {
         digitalWrite(BLUE_LED_PIN, LOW);
         digitalWrite(RED_LED_PIN, HIGH);
-        Serial.println("MPU6050 connection failed");
+        Serial.println("MPU6050 Connection Failed");
       }
-      Serial.println("MPU6050 connection successful");
+      Serial.println("MPU6050 Connection Successful");
 
-      // Serial.println(F("\nSend any character to begin: "));
-      // while (Serial.available() && Serial.read()); // empty buffer
-      // while (!Serial.available());                 // wait for data
-      // while (Serial.available() && Serial.read()); // empty buffer again
+      /////// Micro SD Card Module ///////
+      Serial.println("Initializing Micro SD Card Module...");
+      while (!SD.begin(MICRO_SD_CARD_CS_PIN)) {
+        digitalWrite(BLUE_LED_PIN, LOW);
+        digitalWrite(RED_LED_PIN, HIGH);
+        Serial.println("Micro SD Card Module Initialization Failed");
+      }
+      Serial.println("Micro SD Card Module Initialization Successful");
+      dataFile = SD.open("Data.csv", FILE_WRITE); // Seems the name of the csv has a character limit (e.g. cannot do FlightData)
+      while(!dataFile) {
+        digitalWrite(BLUE_LED_PIN, LOW);
+        digitalWrite(RED_LED_PIN, HIGH);
+        Serial.println("Error Opening FlightData.csv");
+      }
+      if (dataFile) {
+        dataFile.println("Time(ms), YawAngle, PitchAngle, RollAngle");
+        dataFile.close();
+      }
 
-      // !!! Start Button
-      while(digitalRead(START_BUTTON_PIN) == LOW) {
-
-      };
+      // Start Button
+      while(digitalRead(START_BUTTON_PIN) == LOW);
 
       // Indicate start button pressed
       digitalWrite(BLUE_LED_PIN, LOW);
@@ -204,6 +223,7 @@ void loop() {
         // get expected DMP packet size for later comparison
         packetSize = mpu.dmpGetFIFOPacketSize();
       } else {
+        digitalWrite(BLUE_LED_PIN, LOW);
         digitalWrite(RED_LED_PIN, HIGH);
         Serial.print(F("DMP Initialization failed (code "));
         Serial.print(devStatus);
@@ -289,6 +309,21 @@ void loop() {
           // Serial.print("\t");
           // Serial.print(gy.z);
           // Serial.println();
+
+          /////// Micro SD Card Module ///////
+          dataFile = SD.open("Data.csv", FILE_WRITE);
+          if (dataFile) {
+            dataFile.print(currentTime);
+            dataFile.print(", ");
+            dataFile.print(yaw);
+            dataFile.print(", ");
+            dataFile.print(pitch);
+            dataFile.print(", ");
+            dataFile.println(roll);
+            dataFile.close();
+          } else {
+            Serial.println("Error Opening FlightData.csv");
+          }
         }
 
         /////// TVC ///////
