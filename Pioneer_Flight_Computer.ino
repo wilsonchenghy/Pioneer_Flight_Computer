@@ -1,11 +1,10 @@
 #include <Servo.h>
 #include "I2Cdev.h"
 #include "MPU6050_6Axis_MotionApps612.h"
-#if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
 #include "Wire.h"
-#endif
 #include <SPI.h>
 #include <SD.h>
+#include <Adafruit_BMP085.h>
 
 enum State {
   POWER_ON, // blue led on
@@ -27,6 +26,8 @@ State currentState = POWER_ON;
 #define MOSFET_PIN 3 // N-Channel MOSFET
 #define PARACHUTE_EJECTION_PIN 4
 #define MICRO_SD_CARD_CS_PIN 10
+
+#define seaLevelPressure_hPa 1024.9
 
 // Time
 unsigned long currentTime;
@@ -93,6 +94,11 @@ File dataFile;
 
 
 
+/////// BMP180 ///////
+Adafruit_BMP085 bmp;
+
+
+
 //////////////// SETUP ////////////////
 void setup() {
   pinMode(BLUE_LED_PIN, OUTPUT);
@@ -132,27 +138,34 @@ void setup() {
       while (!mpu.testConnection()) {
         digitalWrite(BLUE_LED_PIN, LOW);
         digitalWrite(RED_LED_PIN, HIGH);
-        Serial.println("MPU6050 Connection Failed");
+        Serial.println(F("MPU6050 Connection Failed"));
       }
-      Serial.println("MPU6050 Connection Successful");
+      Serial.println(F("MPU6050 Connection Successful"));
 
       /////// Micro SD Card Module ///////
-      Serial.println("Initializing Micro SD Card Module...");
+      Serial.println(F("Initializing Micro SD Card Module..."));
       while (!SD.begin(MICRO_SD_CARD_CS_PIN)) {
         digitalWrite(BLUE_LED_PIN, LOW);
         digitalWrite(RED_LED_PIN, HIGH);
-        Serial.println("Micro SD Card Module Initialization Failed");
+        Serial.println(F("Micro SD Card Module Initialization Failed"));
       }
-      Serial.println("Micro SD Card Module Initialization Successful");
+      Serial.println(F("Micro SD Card Module Initialization Successful"));
       dataFile = SD.open("Data.csv", FILE_WRITE); // Seems the name of the csv has a character limit (e.g. cannot do FlightData)
       while(!dataFile) {
         digitalWrite(BLUE_LED_PIN, LOW);
         digitalWrite(RED_LED_PIN, HIGH);
-        Serial.println("Error Opening FlightData.csv");
+        Serial.println(F("Error Opening FlightData.csv"));
       }
       if (dataFile) {
-        dataFile.println("Time(ms), YawAngle, PitchAngle, RollAngle");
+        dataFile.println("Time(ms), YawAngle, PitchAngle, RollAngle, Altitude");
         dataFile.close();
+      }
+
+      // BMP180
+      while (!bmp.begin()) {
+        digitalWrite(BLUE_LED_PIN, LOW);
+        digitalWrite(RED_LED_PIN, HIGH);
+        Serial.println("Cannot Find A Valid BMP180 Sensor");
       }
 
       // Start Button
@@ -320,6 +333,8 @@ void loop() {
             dataFile.print(pitch);
             dataFile.print(", ");
             dataFile.println(roll);
+            // dataFile.print(", ");
+            // dataFile.print(bmp.readAltitude(seaLevelPressure_hPa * 100));
             dataFile.close();
           } else {
             Serial.println("Error Opening FlightData.csv");
