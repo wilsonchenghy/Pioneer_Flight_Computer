@@ -16,30 +16,35 @@ enum State {
   ERROR // red led is on while blue led is off
 };
 
+// Disable Function Bool
+bool useMicroSDCard = false;
+bool useBMP180 = false;
+bool useStartButton = false;
+
 State currentState = POWER_ON;
 
-#define YAW_AXIS_SERVO_PIN 5
-#define PITCH_AXIS_SERVO_PIN 6
+#define YAW_AXIS_SERVO_PIN 6
+#define PITCH_AXIS_SERVO_PIN 5
 #define START_BUTTON_PIN 7
 #define BLUE_LED_PIN 8
 #define RED_LED_PIN 9
-#define MOSFET_PIN 3 // N-Channel MOSFET
-#define PARACHUTE_EJECTION_PIN 4
+// #define MOSFET_PIN 3 // N-Channel MOSFET
+// #define PARACHUTE_EJECTION_PIN 4
 #define MICRO_SD_CARD_CS_PIN 10
 
-#define seaLevelPressure_hPa 1024.9
+#define seaLevelPressure_hPa 975.2
 
 // Time
 unsigned long currentTime;
 unsigned long pastTime;
-float timeInterval = 1.0;
+float timeInterval = 20.0;
 
 
 
 /////// TVC ///////
-float Kp = 0.1;
-float Ki = 0.1;
-float Kd = 0.1;
+float Kp = 0.5;
+float Ki = 0.05;
+float Kd = 0.15;
 double SETPOINT = 0.0;
 double pastError1 = 0.0;
 double pastError2 = 0.0;
@@ -104,13 +109,13 @@ void setup() {
   pinMode(BLUE_LED_PIN, OUTPUT);
   pinMode(RED_LED_PIN, OUTPUT);
   pinMode(START_BUTTON_PIN, INPUT);
-  pinMode(MOSFET_PIN, OUTPUT);
+  // pinMode(MOSFET_PIN, OUTPUT);
 
-  digitalWrite(MOSFET_PIN, HIGH);
+  // digitalWrite(MOSFET_PIN, HIGH);
 
   yawAxisServo.attach(YAW_AXIS_SERVO_PIN);
   pitchAxisServo.attach(PITCH_AXIS_SERVO_PIN);
-  parachuteEjectionServo.attach(PARACHUTE_EJECTION_PIN);
+  // parachuteEjectionServo.attach(PARACHUTE_EJECTION_PIN);
 
   Serial.begin(115200);
 
@@ -143,33 +148,39 @@ void setup() {
       Serial.println(F("MPU6050 Connection Successful"));
 
       /////// Micro SD Card Module ///////
-      Serial.println(F("Initializing Micro SD Card Module..."));
-      while (!SD.begin(MICRO_SD_CARD_CS_PIN)) {
-        digitalWrite(BLUE_LED_PIN, LOW);
-        digitalWrite(RED_LED_PIN, HIGH);
-        Serial.println(F("Micro SD Card Module Initialization Failed"));
-      }
-      Serial.println(F("Micro SD Card Module Initialization Successful"));
-      dataFile = SD.open("Data.csv", FILE_WRITE); // Seems the name of the csv has a character limit (e.g. cannot do FlightData)
-      while(!dataFile) {
-        digitalWrite(BLUE_LED_PIN, LOW);
-        digitalWrite(RED_LED_PIN, HIGH);
-        Serial.println(F("Error Opening FlightData.csv"));
-      }
-      if (dataFile) {
-        dataFile.println("Time(ms), YawAngle, PitchAngle, RollAngle, Altitude");
-        dataFile.close();
+      if (useMicroSDCard) {
+        Serial.println(F("Initializing Micro SD Card Module..."));
+        while (!SD.begin(MICRO_SD_CARD_CS_PIN)) {
+          digitalWrite(BLUE_LED_PIN, LOW);
+          digitalWrite(RED_LED_PIN, HIGH);
+          Serial.println(F("Micro SD Card Module Initialization Failed"));
+        }
+        Serial.println(F("Micro SD Card Module Initialization Successful"));
+        dataFile = SD.open("Data.csv", FILE_WRITE); // Seems the name of the csv has a character limit (e.g. cannot do FlightData)
+        while(!dataFile) {
+          digitalWrite(BLUE_LED_PIN, LOW);
+          digitalWrite(RED_LED_PIN, HIGH);
+          Serial.println(F("Error Opening FlightData.csv"));
+        }
+        if (dataFile) {
+          dataFile.println("Time(ms), YawAngle, PitchAngle, RollAngle, Altitude");
+          dataFile.close();
+        }
       }
 
       // BMP180
-      while (!bmp.begin()) {
-        digitalWrite(BLUE_LED_PIN, LOW);
-        digitalWrite(RED_LED_PIN, HIGH);
-        Serial.println("Cannot Find A Valid BMP180 Sensor");
+      if (useBMP180) {
+        while (!bmp.begin()) {
+          digitalWrite(BLUE_LED_PIN, LOW);
+          digitalWrite(RED_LED_PIN, HIGH);
+          Serial.println("Cannot Find A Valid BMP180 Sensor");
+        }
       }
 
       // Start Button
-      while(digitalRead(START_BUTTON_PIN) == LOW);
+      if (useStartButton) {
+        while(digitalRead(START_BUTTON_PIN) == LOW);
+      }
 
       // Indicate start button pressed
       digitalWrite(BLUE_LED_PIN, LOW);
@@ -243,7 +254,7 @@ void loop() {
         Serial.println(F(")"));
       }
 
-      currentState = READY_TO_LAUNCH;
+      currentState = LAUNCH;
       // currentState = LAUNCH; // !!! temp
       // pastTime = millis(); // !!! temp
       break;
@@ -278,9 +289,9 @@ void loop() {
 
     case LAUNCH:
       // Ignite motor
-      digitalWrite(MOSFET_PIN, HIGH);
-      digitalWrite(BLUE_LED_PIN, LOW);
-      digitalWrite(RED_LED_PIN, LOW);
+      // digitalWrite(MOSFET_PIN, HIGH);
+      // digitalWrite(BLUE_LED_PIN, LOW);
+      // digitalWrite(RED_LED_PIN, LOW);
 
       currentTime = millis();
       unsigned long timeElasped = currentTime - pastTime;
@@ -291,20 +302,38 @@ void loop() {
 
           // !!! is pitch and roll reversed?
           mpu.dmpGetQuaternion(&q, fifoBuffer);
-          mpu.dmpGetGravity(&gravity, &q);
-          mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+          // mpu.dmpGetGravity(&gravity, &q);
+          // mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
 
           // ypr in radians
-          yaw = degrees(ypr[0]);
-          roll = degrees(ypr[1]);
-          pitch = degrees(ypr[2]);
+          // yaw = degrees(ypr[0]);
+          // roll = degrees(ypr[2]);
+          // pitch = degrees(ypr[1]);
 
           // Serial.print(yaw);
           // Serial.print("\t");
           // Serial.print(roll);
           // Serial.print("\t");
           // Serial.print(pitch);
+          // Serial.println("\t");
+
+          // Quaternions
+          // Serial.print("quat\t");
+          // Serial.print(q.w);
           // Serial.print("\t");
+          // Serial.print(q.x);
+          // Serial.print("\t");
+          // Serial.print(q.y);
+          // Serial.print("\t");
+          // Serial.println(q.z);
+
+          QuaternionToEuler(q, &roll, &pitch, &yaw);
+          Serial.print(degrees(yaw));
+          Serial.print("\t");
+          Serial.print(degrees(roll));
+          Serial.print("\t");
+          Serial.print(degrees(pitch));
+          Serial.print("\t");
 
           // Get Accel/Gyro sensor readings
           // mpu.dmpGetAccel(&aa, fifoBuffer);
@@ -324,26 +353,30 @@ void loop() {
           // Serial.println();
 
           /////// Micro SD Card Module ///////
-          dataFile = SD.open("Data.csv", FILE_WRITE);
-          if (dataFile) {
-            dataFile.print(currentTime);
-            dataFile.print(", ");
-            dataFile.print(yaw);
-            dataFile.print(", ");
-            dataFile.print(pitch);
-            dataFile.print(", ");
-            dataFile.println(roll);
-            // dataFile.print(", ");
-            // dataFile.print(bmp.readAltitude(seaLevelPressure_hPa * 100));
-            dataFile.close();
-          } else {
-            Serial.println("Error Opening FlightData.csv");
+          if (useMicroSDCard) {
+            dataFile = SD.open("Data.csv", FILE_WRITE);
+            if (dataFile) {
+              dataFile.print(currentTime);
+              dataFile.print(", ");
+              dataFile.print(yaw);
+              dataFile.print(", ");
+              dataFile.print(roll);
+              dataFile.print(", ");
+              dataFile.println(pitch);
+              if (useBMP180) {
+                dataFile.print(", ");
+                dataFile.print(bmp.readAltitude(seaLevelPressure_hPa * 100));
+              }
+              dataFile.close();
+            } else {
+              Serial.println("Error Opening FlightData.csv");
+            }
           }
         }
 
         /////// TVC ///////
-        yawAngle = PID(SETPOINT, yaw, timeElasped, &pastError1, &integralError1);
-        pitchAngle = PID(SETPOINT, pitch, timeElasped, &pastError2, &integralError2);
+        yawAngle = PID(SETPOINT, degrees(yaw), timeElasped, &pastError1, &integralError1);
+        pitchAngle = PID(SETPOINT, degrees(roll), timeElasped, &pastError2, &integralError2); // For current configuration, use the roll measurement
 
         // Serial.print(yawAngle);
         // Serial.print("\t");
@@ -351,7 +384,10 @@ void loop() {
         // Serial.println();
 
         yawAxisServo.write(90+yawAngle); // 90 for the angle offset
+        Serial.print(90+yawAngle);
+        Serial.print("\t");
         pitchAxisServo.write(90+pitchAngle); // 90 for the angle offset
+        Serial.println(90+pitchAngle);
 
         pastTime = currentTime;
       }
@@ -360,7 +396,7 @@ void loop() {
       bool reachedApogee = false; // to be written
       if (reachedApogee) {
         Serial.println("Reached Apogee!");
-        digitalWrite(MOSFET_PIN, LOW);
+        // digitalWrite(MOSFET_PIN, LOW);
         currentState = APOGEE;
         pastTime = millis();
       }
@@ -390,18 +426,39 @@ void loop() {
 
 double PID(double setPoint, double currentPoint, unsigned long timeChange, double *pastError, double *integralError) {
   double error = setPoint - currentPoint;
+  // Serial.print(degrees(currentPoint));
+  // Serial.print("\t");
   double deriviativeError = (error - *pastError) / timeChange;
 
-  if (currentPoint <=4.0 && currentPoint >=4.0) {
-    *integralError += error;
+  double outputAngle = Kp * error + Ki * (*integralError) + Kd * deriviativeError;
+
+  if ((abs(outputAngle) >= 4.0) && ((error >= 0 && (*integralError) >= 0) || (error < 0 && (*integralError) < 0))) {
+    *integralError = *integralError;
   }
   else {
-    *integralError = 0.0;
+    *integralError += error;
   }
-
-  double outputAngle = Kp * error + Ki * *integralError + Kd * deriviativeError;
 
   *pastError = error;
 
   return outputAngle;
+}
+
+
+
+void QuaternionToEuler(Quaternion q, float *roll, float *pitch, float *yaw) {
+    // Roll
+    double sinr_cosp = 2 * (q.w * q.x + q.y * q.z);
+    double cosr_cosp = 1 - 2 * (q.x * q.x + q.y * q.y);
+    *roll = float(atan2(sinr_cosp, cosr_cosp));
+
+    // Pitch
+    double sinp = sqrt(1 + 2 * (q.w * q.y - q.x * q.z));
+    double cosp = sqrt(1 - 2 * (q.w * q.y - q.x * q.z));
+    *pitch = float(2 * atan2(sinp, cosp) - M_PI / 2);
+
+    // Yaw
+    double siny_cosp = 2 * (q.w * q.z + q.x * q.y);
+    double cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z);
+    *yaw = float(atan2(siny_cosp, cosy_cosp));
 }
