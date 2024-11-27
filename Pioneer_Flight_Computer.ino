@@ -42,10 +42,10 @@ float timeInterval = 20.0;
 
 
 /////// TVC ///////
-float Kp = 0.5;
-float Ki = 0.05;
-float Kd = 0.15;
-double SETPOINT = 0.0;
+float Kp = 1.6;
+float Ki = 0.2;
+float Kd = 1.0;
+double SETPOINT = -20.0;
 double pastError1 = 0.0;
 double pastError2 = 0.0;
 double integralError1 = 0.0;
@@ -385,9 +385,9 @@ void loop() {
 
         yawAxisServo.write(90+yawAngle); // 90 for the angle offset
         Serial.print(90+yawAngle);
-        Serial.print("\t");
+        Serial.println("\t");
         pitchAxisServo.write(90+pitchAngle); // 90 for the angle offset
-        Serial.println(90+pitchAngle);
+        // Serial.println(90+pitchAngle);
 
         pastTime = currentTime;
       }
@@ -432,7 +432,7 @@ double PID(double setPoint, double currentPoint, unsigned long timeChange, doubl
 
   double outputAngle = Kp * error + Ki * (*integralError) + Kd * deriviativeError;
 
-  if ((abs(outputAngle) >= 4.0) && ((error >= 0 && (*integralError) >= 0) || (error < 0 && (*integralError) < 0))) {
+  if ((abs(outputAngle) >= 6.0) && ((error >= 0 && (*integralError) >= 0) || (error < 0 && (*integralError) < 0))) {
     *integralError = *integralError;
   }
   else {
