@@ -39,6 +39,9 @@ unsigned long currentTime;
 unsigned long pastTime;
 float timeInterval = 20.0;
 
+unsigned long currentTimeTVC;
+unsigned long pastTimeTVC;
+
 
 
 /////// TVC ///////
@@ -440,6 +443,32 @@ double PID(double setPoint, double currentPoint, unsigned long timeChange, doubl
   }
 
   *pastError = error;
+
+  return outputAngle;
+}
+
+double PID(double setPoint, double currentPoint, unsigned long *currentTime, unsigned long *pastTime, double *pastError, double *integralError) {
+  *currentTime = millis();
+
+  timeChange = (currentTime - pastTime) / 1000.0; // timeChange in seconds
+
+  double error = setPoint - currentPoint;
+
+  double deriviativeError = (error - *pastError) / timeChange;
+
+  *integralError += error * timeChange;
+
+  double outputAngle = Kp * error + Ki * (*integralError) + Kd * deriviativeError;
+
+  double angleSaturation = 8;
+  if (outputAngle > angleSaturation) {
+    outputAngle = angleSaturation;
+  } else if (output < -angleSaturation) {
+    outputAngle = -angleSaturation;
+  }
+
+  *pastError = error;
+  *pastTime = *currentTime
 
   return outputAngle;
 }
