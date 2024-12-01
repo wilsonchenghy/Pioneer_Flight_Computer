@@ -39,16 +39,16 @@ unsigned long currentTime;
 unsigned long pastTime;
 float timeInterval = 20.0;
 
-unsigned long currentTimeTVC;
-unsigned long pastTimeTVC;
+unsigned long currentTimeTVC = 0.0;
+unsigned long pastTimeTVC = 0.0;
 
 
 
 /////// TVC ///////
-float Kp = 1.6;
-float Ki = 0.2;
-float Kd = 1.0;
-double SETPOINT = -20.0;
+float Kp = 0.6;
+float Ki = 0.0;
+float Kd = 0.15;
+double SETPOINT = 0.0;
 double pastError1 = 0.0;
 double pastError2 = 0.0;
 double integralError1 = 0.0;
@@ -378,16 +378,16 @@ void loop() {
         }
 
         /////// TVC ///////
-        yawAngle = PID(SETPOINT, degrees(yaw), timeElasped, &pastError1, &integralError1);
-        pitchAngle = PID(SETPOINT, degrees(roll), timeElasped, &pastError2, &integralError2); // For current configuration, use the roll measurement
+        yawAngle = PID(SETPOINT, degrees(yaw), &currentTimeTVC, &pastTimeTVC, &pastError1, &integralError1);
+        // pitchAngle = PID(SETPOINT, degrees(roll), &currentTimeTVC, &pastTimeTVC, &pastError2, &integralError2); // For current configuration, use the roll measurement
 
         // Serial.print(yawAngle);
         // Serial.print("\t");
         // Serial.print(pitchAngle);
         // Serial.println();
 
-        yawAxisServo.write(90+yawAngle); // 90 for the angle offset
-        Serial.print(90+yawAngle);
+        yawAxisServo.write(90-yawAngle); // 90 for the angle offset
+        Serial.print(90-yawAngle);
         Serial.println("\t");
         pitchAxisServo.write(90+pitchAngle); // 90 for the angle offset
         // Serial.println(90+pitchAngle);
@@ -427,30 +427,30 @@ void loop() {
 
 
 
-double PID(double setPoint, double currentPoint, unsigned long timeChange, double *pastError, double *integralError) {
-  double error = setPoint - currentPoint;
-  // Serial.print(degrees(currentPoint));
-  // Serial.print("\t");
-  double deriviativeError = (error - *pastError) / timeChange;
+// double PID(double setPoint, double currentPoint, unsigned long timeChange, double *pastError, double *integralError) {
+//   double error = setPoint - currentPoint;
+//   // Serial.print(degrees(currentPoint));
+//   // Serial.print("\t");
+//   double deriviativeError = (error - *pastError) / timeChange;
 
-  double outputAngle = Kp * error + Ki * (*integralError) + Kd * deriviativeError;
+//   double outputAngle = Kp * error + Ki * (*integralError) + Kd * deriviativeError;
 
-  if ((abs(outputAngle) >= 6.0) && ((error >= 0 && (*integralError) >= 0) || (error < 0 && (*integralError) < 0))) {
-    *integralError = *integralError;
-  }
-  else {
-    *integralError += error;
-  }
+//   if ((abs(outputAngle) >= 6.0) && ((error >= 0 && (*integralError) >= 0) || (error < 0 && (*integralError) < 0))) {
+//     *integralError = *integralError;
+//   }
+//   else {
+//     *integralError += error;
+//   }
 
-  *pastError = error;
+//   *pastError = error;
 
-  return outputAngle;
-}
+//   return outputAngle;
+// }
 
 double PID(double setPoint, double currentPoint, unsigned long *currentTime, unsigned long *pastTime, double *pastError, double *integralError) {
   *currentTime = millis();
 
-  timeChange = (currentTime - pastTime) / 1000.0; // timeChange in seconds
+  double timeChange = (*currentTime - *pastTime) / 1000.0; // timeChange in seconds
 
   double error = setPoint - currentPoint;
 
@@ -458,17 +458,20 @@ double PID(double setPoint, double currentPoint, unsigned long *currentTime, uns
 
   *integralError += error * timeChange;
 
+  Serial.print(Kd * deriviativeError);
+  Serial.print("\t");
+
   double outputAngle = Kp * error + Ki * (*integralError) + Kd * deriviativeError;
 
-  double angleSaturation = 8;
+  double angleSaturation = 13;
   if (outputAngle > angleSaturation) {
     outputAngle = angleSaturation;
-  } else if (output < -angleSaturation) {
+  } else if (outputAngle < -angleSaturation) {
     outputAngle = -angleSaturation;
   }
 
   *pastError = error;
-  *pastTime = *currentTime
+  *pastTime = *currentTime;
 
   return outputAngle;
 }
