@@ -299,6 +299,15 @@ void loop() {
       currentTime = millis();
       unsigned long timeElasped = currentTime - pastTime;
 
+      // dynamic SETPOINT changing
+      // if (Serial.available() > 0) {
+      //   Serial.println("Change SETPOINT");
+      //   float newSetpoint = Serial.parseFloat();
+      //   if (newSetpoint != 0.0) { // DK why need this to work
+      //     SETPOINT = newSetpoint;
+      //   }
+      // }
+
       if (timeElasped >= timeInterval) {
         if (!dmpReady) return;
         if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) {
@@ -337,6 +346,8 @@ void loop() {
           Serial.print("\t");
           Serial.print(degrees(pitch));
           Serial.print("\t");
+          // Serial.print(SETPOINT);
+          // Serial.print("\t");
 
           // Get Accel/Gyro sensor readings
           // mpu.dmpGetAccel(&aa, fifoBuffer);
