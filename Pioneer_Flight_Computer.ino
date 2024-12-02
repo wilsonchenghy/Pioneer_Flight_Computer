@@ -45,8 +45,8 @@ unsigned long pastTimeTVC = 0.0;
 
 
 /////// TVC ///////
-float Kp = 0.6;
-float Ki = 0.0;
+float Kp = 0.4;
+float Ki = 0.05;
 float Kd = 0.15;
 double SETPOINT = 0.0;
 double pastError1 = 0.0;
