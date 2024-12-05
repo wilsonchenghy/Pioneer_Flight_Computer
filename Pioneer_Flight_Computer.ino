@@ -41,6 +41,8 @@ float timeInterval = 20.0;
 
 unsigned long currentTimeTVC = 0.0;
 unsigned long pastTimeTVC = 0.0;
+unsigned long currentTimeTVC2 = 0.0;
+unsigned long pastTimeTVC2 = 0.0;
 
 
 
@@ -390,7 +392,7 @@ void loop() {
 
         /////// TVC ///////
         yawAngle = PID(SETPOINT, degrees(yaw), &currentTimeTVC, &pastTimeTVC, &pastError1, &integralError1);
-        // pitchAngle = PID(SETPOINT, degrees(roll), &currentTimeTVC, &pastTimeTVC, &pastError2, &integralError2); // For current configuration, use the roll measurement
+        pitchAngle = PID(SETPOINT, degrees(roll), &currentTimeTVC2, &pastTimeTVC2, &pastError2, &integralError2); // For current configuration, use the roll measurement
 
         // Serial.print(yawAngle);
         // Serial.print("\t");
@@ -399,9 +401,10 @@ void loop() {
 
         yawAxisServo.write(90-yawAngle); // 90 for the angle offset
         Serial.print(90-yawAngle);
-        Serial.println("\t");
+        Serial.print("\t");
         pitchAxisServo.write(90+pitchAngle); // 90 for the angle offset
-        // Serial.println(90+pitchAngle);
+        Serial.print(90+pitchAngle);
+        Serial.println("\t");
 
         pastTime = currentTime;
       }
@@ -437,26 +440,6 @@ void loop() {
 }
 
 
-
-// double PID(double setPoint, double currentPoint, unsigned long timeChange, double *pastError, double *integralError) {
-//   double error = setPoint - currentPoint;
-//   // Serial.print(degrees(currentPoint));
-//   // Serial.print("\t");
-//   double deriviativeError = (error - *pastError) / timeChange;
-
-//   double outputAngle = Kp * error + Ki * (*integralError) + Kd * deriviativeError;
-
-//   if ((abs(outputAngle) >= 6.0) && ((error >= 0 && (*integralError) >= 0) || (error < 0 && (*integralError) < 0))) {
-//     *integralError = *integralError;
-//   }
-//   else {
-//     *integralError += error;
-//   }
-
-//   *pastError = error;
-
-//   return outputAngle;
-// }
 
 double PID(double setPoint, double currentPoint, unsigned long *currentTime, unsigned long *pastTime, double *pastError, double *integralError) {
   *currentTime = millis();
