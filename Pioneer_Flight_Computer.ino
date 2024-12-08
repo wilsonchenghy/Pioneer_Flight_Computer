@@ -18,7 +18,7 @@ enum State {
 
 // Disable Function Bool
 bool useMicroSDCard = false;
-bool useBMP180 = false;
+bool useBMP180 = true;
 bool useStartButton = false;
 
 State currentState = POWER_ON;
@@ -106,6 +106,15 @@ File dataFile;
 
 /////// BMP180 ///////
 Adafruit_BMP085 bmp;
+float altitude= 0;
+float prevAltitude = 0;
+
+
+
+/////// Apogee Detection ///////
+bool reachedApogee = false;
+float altitudeDescentThreshold = 1; // in meter ? Need confirm
+bool apogeeAltitudeCondition = false;
 
 
 
@@ -342,12 +351,12 @@ void loop() {
           // Serial.println(q.z);
 
           QuaternionToEuler(q, &roll, &pitch, &yaw);
-          Serial.print(degrees(yaw));
-          Serial.print("\t");
-          Serial.print(degrees(roll));
-          Serial.print("\t");
-          Serial.print(degrees(pitch));
-          Serial.print("\t");
+          // Serial.print(degrees(yaw));
+          // Serial.print("\t");
+          // Serial.print(degrees(roll));
+          // Serial.print("\t");
+          // Serial.print(degrees(pitch));
+          // Serial.print("\t");
           // Serial.print(SETPOINT);
           // Serial.print("\t");
 
@@ -399,20 +408,30 @@ void loop() {
         // Serial.print(pitchAngle);
         // Serial.println();
 
-        yawAxisServo.write(90-yawAngle); // 90 for the angle offset
-        Serial.print(90-yawAngle);
-        Serial.print("\t");
-        pitchAxisServo.write(90+pitchAngle); // 90 for the angle offset
-        Serial.print(90+pitchAngle);
-        Serial.println("\t");
+        // yawAxisServo.write(90-yawAngle); // 90 for the angle offset
+        // Serial.print(90-yawAngle);
+        // Serial.print("\t");
+        // pitchAxisServo.write(90+pitchAngle); // 90 for the angle offset
+        // Serial.print(90+pitchAngle);
+        // Serial.println("\t");
 
         pastTime = currentTime;
       }
 
       // wait until reaching apogee to change state
-      bool reachedApogee = false; // to be written
+      if (useBMP180) {
+        altitude = bmp.readAltitude(seaLevelPressure_hPa * 100);
+        if ((altitude - prevAltitude) < - altitudeDescentThreshold) {
+          apogeeAltitudeCondition = true;
+        }
+        prevAltitude = altitude;
+
+        if (apogeeAltitudeCondition) {
+          reachedApogee = true;
+        }
+      }
       if (reachedApogee) {
-        Serial.println("Reached Apogee!");
+        // Serial.println("Reached Apogee!");
         // digitalWrite(MOSFET_PIN, LOW);
         currentState = APOGEE;
         pastTime = millis();
@@ -451,9 +470,6 @@ double PID(double setPoint, double currentPoint, unsigned long *currentTime, uns
   double deriviativeError = (error - *pastError) / timeChange;
 
   *integralError += error * timeChange;
-
-  Serial.print(Kd * deriviativeError);
-  Serial.print("\t");
 
   double outputAngle = Kp * error + Ki * (*integralError) + Kd * deriviativeError;
 
