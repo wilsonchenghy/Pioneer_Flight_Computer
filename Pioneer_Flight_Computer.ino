@@ -361,7 +361,7 @@ void loop() {
           // Serial.print("\t");
 
           // Get Accel/Gyro sensor readings
-          // mpu.dmpGetAccel(&aa, fifoBuffer);
+          mpu.dmpGetAccel(&aa, fifoBuffer);
           // Serial.print("\tRaw Accl XYZ\t");
           // Serial.print(aa.x);
           // Serial.print("\t");
@@ -421,12 +421,12 @@ void loop() {
       // wait until reaching apogee to change state
       if (useBMP180) {
         altitude = bmp.readAltitude(seaLevelPressure_hPa * 100);
-        if ((altitude - prevAltitude) < - altitudeDescentThreshold) {
+        if ((altitude - prevAltitude) < - altitudeDescentThreshold) { // Need to modify threshold
           apogeeAltitudeCondition = true;
         }
         prevAltitude = altitude;
 
-        if (apogeeAltitudeCondition) {
+        if (apogeeAltitudeCondition && aa.x < 0) { // Need to check which accelerometer axis
           reachedApogee = true;
         }
       }
