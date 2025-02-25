@@ -1,5 +1,5 @@
 # Pioneer Flight Computer
-[Watch Rocket Launch](https://github.com/YOUR_USERNAME/YOUR_REPO/blob/main/Rocket_Launch.MOV)
+[Watch Rocket Launch](https://github.com/wilsonchenghy/Pioneer_Flight_Computer/blob/main/Rocket_Launch.MOV)
 ![](https://github.com/wilsonchenghy/Pioneer_Flight_Computer/blob/main/Pioneer.jpg)
 ![](https://github.com/wilsonchenghy/Pioneer_Flight_Computer/blob/main/TVC_Rocket.jpg)
 ![](https://github.com/wilsonchenghy/Pioneer_Flight_Computer/blob/main/TVC_Rocket_2.jpg)
