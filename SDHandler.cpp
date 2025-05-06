@@ -22,11 +22,11 @@ void writeSDCard(unsigned long time, float yaw, float roll, float pitch, float a
     dataFile.print(roll);
     dataFile.print(",");
     dataFile.print(pitch);
-    if (altitude != 0) {
-      dataFile.print(",");
-      dataFile.print(altitude);
-    }
+    dataFile.print(",");
+    dataFile.print(altitude);
     dataFile.println();
     dataFile.close();
+  } else {
+    Serial.println("Error Opening FlightData.csv");
   }
 }

@@ -18,15 +18,25 @@ void initializeTVC() {
 
 double PID(double setPoint, double currentPoint, unsigned long *currentTime, unsigned long *pastTime, double *pastError, double *integralError) {
   *currentTime = millis();
+
   double timeChange = (*currentTime - *pastTime) / 1000.0;
+
   double error = setPoint - currentPoint;
+
   double deriviativeError = (error - *pastError) / timeChange;
+
   *integralError += error * timeChange;
+
   double outputAngle = Kp * error + Ki * (*integralError) + Kd * deriviativeError;
+
   double angleSaturation = 13;
-  if (outputAngle > angleSaturation) outputAngle = angleSaturation;
-  else if (outputAngle < -angleSaturation) outputAngle = -angleSaturation;
+  if (outputAngle > angleSaturation) {
+    outputAngle = angleSaturation;
+  } else if (outputAngle < -angleSaturation) {
+    outputAngle = -angleSaturation;
+  }
   *pastError = error;
   *pastTime = *currentTime;
+  
   return outputAngle;
 }
