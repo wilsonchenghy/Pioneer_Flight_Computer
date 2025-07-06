@@ -24,6 +24,7 @@ float integralError1 = 0.0, integralError2 = 0.0;
 bool reachedApogee = false;
 bool apogeeAltitudeCondition = false;
 float altitudeDescentThreshold = 1.0;
+float prevAltitude = 0.0;
 
 Servo parachuteEjectionServo;
 
