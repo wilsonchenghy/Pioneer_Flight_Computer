@@ -39,7 +39,7 @@ void setup() {
   if (useBMP180) setupBMP180();
   if (useMicroSDCard) setupSDCard();
 
-  parachuteEjectionServo.attach(PARACHUTE_EJECTION_PIN)
+  parachuteEjectionServo.attach(PARACHUTE_EJECTION_PIN);
   parachuteEjectionServo.write(65);
 
   digitalWrite(BLUE_LED_PIN, HIGH);
@@ -53,11 +53,14 @@ void setup() {
 void loop() {
   switch (currentState) {
     case SYSTEM_CHECK:
-      if (dmpReady) {
+      // Test MPU6050 communication
+      Wire.beginTransmission(0x68);
+      byte error = Wire.endTransmission();
+      if (error == 0) {
         Serial.println("System Check Passed");
         currentState = READY_TO_LAUNCH;
       } else {
-        Serial.println("System Check Failed");
+        Serial.println("System Check Failed - MPU6050 not found");
         currentState = ERROR;
       }
       break;
@@ -92,9 +95,10 @@ void loop() {
       currentTime = millis();
       if ((currentTime - pastTime) >= timeInterval) {
         if (readMPU6050()) {
-          Quaternion q;
-          memcpy(&q, fifoBuffer, sizeof(q));
-          QuaternionToEuler(q, &roll, &pitch, &yaw);
+          // Use the calculated angles from the new MPU6050 implementation
+          roll = AngleRoll;
+          pitch = AnglePitch;
+          yaw = AngleYaw;
 
           // Serial.print("Roll Angle [°]=");
           // Serial.print(AngleRoll);
@@ -104,8 +108,8 @@ void loop() {
           // Serial.print(AngleYaw);
           // Serial.print("\t");
 
-          double yawAngle = PID(0.0, degrees(yaw), &currentTimeTVC, &pastTimeTVC, &pastError1, &integralError1);
-          double pitchAngle = PID(0.0, degrees(roll), &currentTimeTVC2, &pastTimeTVC2, &pastError2, &integralError2);
+          double yawAngle = PID(0.0, yaw, &currentTimeTVC, &pastTimeTVC, &pastError1, &integralError1);
+          double pitchAngle = PID(0.0, roll, &currentTimeTVC2, &pastTimeTVC2, &pastError2, &integralError2);
 
           yawAxisServo.write(90 + yawAngle);
           pitchAxisServo.write(90 + pitchAngle);

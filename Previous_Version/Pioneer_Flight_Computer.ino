@@ -1,50 +1,15 @@
+#include <Wire.h>
+#include <math.h>
 #include <Servo.h>
-#include "I2Cdev.h"
-#include "MPU6050_6Axis_MotionApps612.h"
-#include "Wire.h"
-#include <SPI.h>
-#include <SD.h>
 #include <Adafruit_BMP085.h>
 
-enum State {
-  POWER_ON, // blue led on
-  SYSTEM_CHECK, // as when transitioned to this state, the blue led will blink once and the mpu6050 will be calibrated, if error occur, it goes to ERROR state and red led turns on while blue led turns off
-  READY_TO_LAUNCH, // blue led start blinking for a second or so
-  LAUNCHING_COUNTDOWN, // red led blinking while blue led is off
-  LAUNCH, // red and blue led both light up for one second, and then ignite motor and all leds are turned off
-  APOGEE, // all led is off
-  ERROR // red led is on while blue led is off
-};
+#define seaLevelPressure_hPa 1020.0
 
-// Disable Function Bool
-bool useMicroSDCard = false;
-bool useBMP180 = true;
-bool useStartButton = false;
+float RateRoll, RatePitch, RateYaw;
+float RateCalibrationRoll, RateCalibrationPitch, RateCalibrationYaw;
+float AngleRoll, AnglePitch, AngleYaw;
 
-State currentState = POWER_ON;
-
-#define YAW_AXIS_SERVO_PIN 6
-#define PITCH_AXIS_SERVO_PIN 5
-#define START_BUTTON_PIN 7
-#define BLUE_LED_PIN 8
-#define RED_LED_PIN 9
-// #define MOSFET_PIN 3 // N-Channel MOSFET
-// #define PARACHUTE_EJECTION_PIN 4
-#define MICRO_SD_CARD_CS_PIN 10
-
-#define seaLevelPressure_hPa 975.2
-
-// Time
-unsigned long currentTime;
-unsigned long pastTime;
-float timeInterval = 20.0;
-
-unsigned long currentTimeTVC = 0.0;
-unsigned long pastTimeTVC = 0.0;
-unsigned long currentTimeTVC2 = 0.0;
-unsigned long pastTimeTVC2 = 0.0;
-
-
+const float dt = 0.01;  
 
 /////// TVC ///////
 float Kp = 0.4;
@@ -56,6 +21,16 @@ double pastError2 = 0.0;
 double integralError1 = 0.0;
 double integralError2 = 0.0;
 
+// Time
+unsigned long currentTime;
+unsigned long pastTime;
+float timeInterval = 20.0;
+
+unsigned long currentTimeTVC = 0.0;
+unsigned long pastTimeTVC = 0.0;
+unsigned long currentTimeTVC2 = 0.0;
+unsigned long pastTimeTVC2 = 0.0;
+
 Servo yawAxisServo;
 Servo pitchAxisServo;
 
@@ -63,430 +38,192 @@ Servo pitchAxisServo;
 double yawAngle;
 double pitchAngle;
 
+struct Quaternion {
+  float w, x, y, z;
+  
+  Quaternion() : w(1), x(0), y(0), z(0) {}
+  
+  void normalize() {
+    float norm = sqrt(w*w + x*x + y*y + z*z);
+    w /= norm;
+    x /= norm;
+    y /= norm;
+    z /= norm;
+  }
+};
 
+Quaternion q;
 
-/////// MPU6050 ///////
-MPU6050 mpu;
-
-#define INTERRUPT_PIN 2  // use pin 2 on Arduino Uno & most boards
-// MPU control/status vars
-bool dmpReady = false;  // set true if DMP init was successful
-uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
-uint8_t devStatus;      // return status after each device operation (0 = success, !0 = error)
-uint16_t packetSize;    // expected DMP packet size (default is 42 bytes)
-uint16_t fifoCount;     // count of all bytes currently in FIFO
-uint8_t fifoBuffer[64]; // FIFO storage buffer
-
-// orientation/motion vars
-Quaternion q;           // [w, x, y, z]         quaternion container
-VectorInt16 aa;         // [x, y, z]            accel sensor measurements
-VectorInt16 gy;         // [x, y, z]            gyro sensor measurements
-VectorInt16 aaReal;     // [x, y, z]            gravity-free accel sensor measurements
-VectorInt16 aaWorld;    // [x, y, z]            world-frame accel sensor measurements
-VectorFloat gravity;    // [x, y, z]            gravity vector
-float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
-float yaw, pitch, roll;
-
-volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
-void dmpDataReady() {
-  mpuInterrupt = true;
-}
-
-
+/////// BMP180 ///////
+Adafruit_BMP085 bmp;
+float altitude= 0;
+float prevAltitude = 0;
+float altitudeDescentThreshold = 5;
 
 /////// Parachute Ejection ///////
 Servo parachuteEjectionServo;
 
 
 
-/////// Micro SD Card Module ///////
-File dataFile;
-
-
-
-/////// BMP180 ///////
-Adafruit_BMP085 bmp;
-float altitude= 0;
-float prevAltitude = 0;
-
-
-
-/////// Apogee Detection ///////
-bool reachedApogee = false;
-float altitudeDescentThreshold = 1; // in meter ? Need confirm
-bool apogeeAltitudeCondition = false;
-
-
-
-//////////////// SETUP ////////////////
 void setup() {
-  pinMode(BLUE_LED_PIN, OUTPUT);
-  pinMode(RED_LED_PIN, OUTPUT);
-  pinMode(START_BUTTON_PIN, INPUT);
-  // pinMode(MOSFET_PIN, OUTPUT);
-
-  // digitalWrite(MOSFET_PIN, HIGH);
-
-  yawAxisServo.attach(YAW_AXIS_SERVO_PIN);
-  pitchAxisServo.attach(PITCH_AXIS_SERVO_PIN);
-  // parachuteEjectionServo.attach(PARACHUTE_EJECTION_PIN);
-
   Serial.begin(115200);
+  pinMode(13,OUTPUT);
+  digitalWrite(13,HIGH); 
 
-  switch (currentState) {
-    case POWER_ON:
-      digitalWrite(BLUE_LED_PIN, HIGH);
+  Wire.setClock(400000);                         // Set clock speed of I2C (400kB/s)
+  Wire.begin();
+  delay(250);
 
-      // Set servo initial angle at 90 degree
-      yawAxisServo.write(90);
-      pitchAxisServo.write(90);
-      parachuteEjectionServo.write(90);
+  Wire.beginTransmission(0x68);                  // Start the gyro in power mode
+  Wire.write(0x6B);
+  Wire.write(0x00);
+  Wire.endTransmission(); 
 
-      /////// MPU6050 ///////
-      #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
-        Wire.begin();
-        Wire.setClock(400000);
-      #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
-        Fastwire::setup(400, true);
-      #endif
-
-      Serial.println(F("Initializing MPU6050..."));
-      mpu.initialize();
-      pinMode(INTERRUPT_PIN, INPUT);
-
-      while (!mpu.testConnection()) {
-        digitalWrite(BLUE_LED_PIN, LOW);
-        digitalWrite(RED_LED_PIN, HIGH);
-        Serial.println(F("MPU6050 Connection Failed"));
-      }
-      Serial.println(F("MPU6050 Connection Successful"));
-
-      /////// Micro SD Card Module ///////
-      if (useMicroSDCard) {
-        Serial.println(F("Initializing Micro SD Card Module..."));
-        while (!SD.begin(MICRO_SD_CARD_CS_PIN)) {
-          digitalWrite(BLUE_LED_PIN, LOW);
-          digitalWrite(RED_LED_PIN, HIGH);
-          Serial.println(F("Micro SD Card Module Initialization Failed"));
-        }
-        Serial.println(F("Micro SD Card Module Initialization Successful"));
-        dataFile = SD.open("Data.csv", FILE_WRITE); // Seems the name of the csv has a character limit (e.g. cannot do FlightData)
-        while(!dataFile) {
-          digitalWrite(BLUE_LED_PIN, LOW);
-          digitalWrite(RED_LED_PIN, HIGH);
-          Serial.println(F("Error Opening FlightData.csv"));
-        }
-        if (dataFile) {
-          dataFile.println("Time(ms), YawAngle, PitchAngle, RollAngle, Altitude");
-          dataFile.close();
-        }
-      }
-
-      // BMP180
-      if (useBMP180) {
-        while (!bmp.begin()) {
-          digitalWrite(BLUE_LED_PIN, LOW);
-          digitalWrite(RED_LED_PIN, HIGH);
-          Serial.println("Cannot Find A Valid BMP180 Sensor");
-        }
-      }
-
-      // Start Button
-      if (useStartButton) {
-        while(digitalRead(START_BUTTON_PIN) == LOW);
-      }
-
-      // Indicate start button pressed
-      digitalWrite(BLUE_LED_PIN, LOW);
-      delay(1000);
-      digitalWrite(BLUE_LED_PIN, HIGH);
-
-      currentState = SYSTEM_CHECK;
-      break;
-
-    case ERROR:
-      digitalWrite(BLUE_LED_PIN, LOW);
-      digitalWrite(RED_LED_PIN, HIGH);
-      Serial.println("Error occurred during power on");
-      break;
-
-    default:
-      digitalWrite(BLUE_LED_PIN, LOW);
-      digitalWrite(RED_LED_PIN, HIGH);
-      Serial.println("Unknown state");
-      break;
-  }
-}
-
-
-
-
-
-//////////////// LOOP ////////////////
-void loop() {
-  switch (currentState) {
-    case SYSTEM_CHECK:
-      Serial.println(F("Initializing DMP...")); 
-      devStatus = mpu.dmpInitialize();
-
-      // supply your own gyro offsets here, scaled for min sensitivity
-      mpu.setXGyroOffset(51);
-      mpu.setYGyroOffset(8);
-      mpu.setZGyroOffset(21);
-      mpu.setXAccelOffset(1150);
-      mpu.setYAccelOffset(-50);
-      mpu.setZAccelOffset(1060);
-      // make sure it worked (returns 0 if so)
-      if (devStatus == 0) {
-        // Calibration Time: generate offsets and calibrate our MPU6050
-        mpu.CalibrateAccel(6);
-        mpu.CalibrateGyro(6);
-        Serial.println();
-        mpu.PrintActiveOffsets();
-        // turn on the DMP, now that it's ready
-        Serial.println(F("Enabling DMP..."));
-        mpu.setDMPEnabled(true);
-
-        // enable Arduino interrupt detection
-        Serial.print(F("Enabling interrupt detection (Arduino external interrupt "));
-        Serial.print(digitalPinToInterrupt(INTERRUPT_PIN));
-        Serial.println(F(")..."));
-        attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
-        mpuIntStatus = mpu.getIntStatus();
-
-        // set our DMP Ready flag so the main loop() function knows it's okay to use it
-        Serial.println(F("DMP ready! Waiting for first interrupt..."));
-        dmpReady = true;
-
-        // get expected DMP packet size for later comparison
-        packetSize = mpu.dmpGetFIFOPacketSize();
-      } else {
-        digitalWrite(BLUE_LED_PIN, LOW);
-        digitalWrite(RED_LED_PIN, HIGH);
-        Serial.print(F("DMP Initialization failed (code "));
-        Serial.print(devStatus);
-        Serial.println(F(")"));
-      }
-
-      currentState = LAUNCH;
-      // currentState = LAUNCH; // !!! temp
-      // pastTime = millis(); // !!! temp
-      break;
-
-    case READY_TO_LAUNCH:
-      for(int i=0; i<3; i++) {
-        digitalWrite(BLUE_LED_PIN, LOW);
-        delay(500);
-        digitalWrite(BLUE_LED_PIN, HIGH);
-        delay(500);
-      }
-      currentState = LAUNCHING_COUNTDOWN;
-      break;
-
-    case LAUNCHING_COUNTDOWN:
-      digitalWrite(BLUE_LED_PIN, LOW);
-      // Countdown 10 sec
-      for(int i=0; i<10; i++) {
-        digitalWrite(RED_LED_PIN, HIGH);
-        delay(500);
-        digitalWrite(RED_LED_PIN, LOW);
-        delay(500);
-      }
-      currentState = LAUNCH;
-
-      digitalWrite(BLUE_LED_PIN, HIGH);
-      digitalWrite(RED_LED_PIN, HIGH);
-      delay(1000);
-
-      pastTime = millis();
-      break;
-
-    case LAUNCH:
-      // Ignite motor
-      // digitalWrite(MOSFET_PIN, HIGH);
-      // digitalWrite(BLUE_LED_PIN, LOW);
-      // digitalWrite(RED_LED_PIN, LOW);
-
-      currentTime = millis();
-      unsigned long timeElasped = currentTime - pastTime;
-
-      // dynamic SETPOINT changing
-      // if (Serial.available() > 0) {
-      //   Serial.println("Change SETPOINT");
-      //   float newSetpoint = Serial.parseFloat();
-      //   if (newSetpoint != 0.0) { // DK why need this to work
-      //     SETPOINT = newSetpoint;
-      //   }
-      // }
-
-      if (timeElasped >= timeInterval) {
-        if (!dmpReady) return;
-        if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) {
-
-          // !!! is pitch and roll reversed?
-          mpu.dmpGetQuaternion(&q, fifoBuffer);
-          // mpu.dmpGetGravity(&gravity, &q);
-          // mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-
-          // ypr in radians
-          // yaw = degrees(ypr[0]);
-          // roll = degrees(ypr[2]);
-          // pitch = degrees(ypr[1]);
-
-          // Serial.print(yaw);
-          // Serial.print("\t");
-          // Serial.print(roll);
-          // Serial.print("\t");
-          // Serial.print(pitch);
-          // Serial.println("\t");
-
-          // Quaternions
-          // Serial.print("quat\t");
-          // Serial.print(q.w);
-          // Serial.print("\t");
-          // Serial.print(q.x);
-          // Serial.print("\t");
-          // Serial.print(q.y);
-          // Serial.print("\t");
-          // Serial.println(q.z);
-
-          QuaternionToEuler(q, &roll, &pitch, &yaw);
-          // Serial.print(degrees(yaw));
-          // Serial.print("\t");
-          // Serial.print(degrees(roll));
-          // Serial.print("\t");
-          // Serial.print(degrees(pitch));
-          // Serial.print("\t");
-          // Serial.print(SETPOINT);
-          // Serial.print("\t");
-
-          // Get Accel/Gyro sensor readings
-          mpu.dmpGetAccel(&aa, fifoBuffer);
-          // Serial.print("\tRaw Accl XYZ\t");
-          // Serial.print(aa.x);
-          // Serial.print("\t");
-          // Serial.print(aa.y);
-          // Serial.print("\t");
-          // Serial.print(aa.z);
-          // mpu.dmpGetGyro(&gy, fifoBuffer);
-          // Serial.print("\tRaw Gyro XYZ\t");
-          // Serial.print(gy.x);
-          // Serial.print("\t");
-          // Serial.print(gy.y);
-          // Serial.print("\t");
-          // Serial.print(gy.z);
-          // Serial.println();
-
-          /////// Micro SD Card Module ///////
-          if (useMicroSDCard) {
-            dataFile = SD.open("Data.csv", FILE_WRITE);
-            if (dataFile) {
-              dataFile.print(currentTime);
-              dataFile.print(", ");
-              dataFile.print(yaw);
-              dataFile.print(", ");
-              dataFile.print(roll);
-              dataFile.print(", ");
-              dataFile.println(pitch);
-              if (useBMP180) {
-                dataFile.print(", ");
-                dataFile.print(bmp.readAltitude(seaLevelPressure_hPa * 100));
-              }
-              dataFile.close();
-            } else {
-              Serial.println("Error Opening FlightData.csv");
-            }
-          }
-        }
-
-        /////// TVC ///////
-        yawAngle = PID(SETPOINT, degrees(yaw), &currentTimeTVC, &pastTimeTVC, &pastError1, &integralError1);
-        pitchAngle = PID(SETPOINT, degrees(roll), &currentTimeTVC2, &pastTimeTVC2, &pastError2, &integralError2); // For current configuration, use the roll measurement
-
-        // Serial.print(yawAngle);
-        // Serial.print("\t");
-        // Serial.print(pitchAngle);
-        // Serial.println();
-
-        // yawAxisServo.write(90-yawAngle); // 90 for the angle offset
-        // Serial.print(90-yawAngle);
-        // Serial.print("\t");
-        // pitchAxisServo.write(90+pitchAngle); // 90 for the angle offset
-        // Serial.print(90+pitchAngle);
-        // Serial.println("\t");
-
-        pastTime = currentTime;
-      }
-
-      // wait until reaching apogee to change state
-      if (useBMP180) {
-        altitude = bmp.readAltitude(seaLevelPressure_hPa * 100);
-        if ((altitude - prevAltitude) < - altitudeDescentThreshold) { // Need to modify threshold
-          apogeeAltitudeCondition = true;
-        }
-        prevAltitude = altitude;
-
-        if (apogeeAltitudeCondition && aa.x < 0) { // Need to check which accelerometer axis
-          reachedApogee = true;
-        }
-      }
-      if (reachedApogee) {
-        // Serial.println("Reached Apogee!");
-        // digitalWrite(MOSFET_PIN, LOW);
-        currentState = APOGEE;
-        pastTime = millis();
-      }
-      break;
+  for (int RateCalibrationNum = 0; RateCalibrationNum < 3000; RateCalibrationNum ++) {
     
-    case APOGEE:
-      delay(100); // will adding a delay here be better?
-      // Parachute Ejection
-      parachuteEjectionServo.write(0);
-      break;
-
-    case ERROR:
-      digitalWrite(BLUE_LED_PIN, LOW);
-      digitalWrite(RED_LED_PIN, HIGH);
-      Serial.println("Error occurred during system check");
-      break;
-
-    default:
-      digitalWrite(BLUE_LED_PIN, LOW);
-      digitalWrite(RED_LED_PIN, HIGH);
-      Serial.println("Unknown state");
-      break;
+    gyro_signals();
+    RateCalibrationRoll += RateRoll;
+    RateCalibrationPitch += RatePitch;
+    RateCalibrationYaw += RateYaw;
+    delay(1);
   }
+  RateCalibrationRoll/=3000;
+  RateCalibrationPitch/=3000;
+  RateCalibrationYaw/=3000;
+
+  yawAxisServo.attach(6);
+  pitchAxisServo.attach(5);
+
+  yawAxisServo.write(90);
+  pitchAxisServo.write(90);
+
+  // BMP180
+  while (!bmp.begin()) {
+    Serial.println("Cannot Find A Valid BMP180 Sensor");
+  }
+
+  // Parachute
+  parachuteEjectionServo.attach(4);
+  parachuteEjectionServo.write(65);
+  
 }
 
 
 
-double PID(double setPoint, double currentPoint, unsigned long *currentTime, unsigned long *pastTime, double *pastError, double *integralError) {
-  *currentTime = millis();
+void loop() {
+  
+  currentTime = millis();
+  unsigned long timeElasped = currentTime - pastTime;
 
-  double timeChange = (*currentTime - *pastTime) / 1000.0; // timeChange in seconds
+  gyro_signals();
 
-  double error = setPoint - currentPoint;
+  RateRoll -= RateCalibrationRoll;
+  RatePitch -= RateCalibrationPitch;
+  RateYaw -= RateCalibrationYaw;
 
-  double deriviativeError = (error - *pastError) / timeChange;
+  updateQuaternion(q, RateRoll, RatePitch, RateYaw, dt);
 
-  *integralError += error * timeChange;
+  QuaternionToEuler(q, &AngleRoll, &AnglePitch, &AngleYaw);
 
-  double outputAngle = Kp * error + Ki * (*integralError) + Kd * deriviativeError;
+  // Serial.print("Roll Rate [°/s]=");
+  // Serial.print(RateRoll);
+  // Serial.print(" Pitch Rate [°/s]=");
+  // Serial.print(RatePitch);
+  // Serial.print(" Yaw Rate [°/s]=");
+  // Serial.println(RateYaw);
 
-  double angleSaturation = 13;
-  if (outputAngle > angleSaturation) {
-    outputAngle = angleSaturation;
-  } else if (outputAngle < -angleSaturation) {
-    outputAngle = -angleSaturation;
-  }
+  AngleRoll = 1.5*degrees(AngleRoll);
+  AnglePitch = 1.5*degrees(AnglePitch);
+  AngleYaw = 1.5*degrees(AngleYaw);
 
-  *pastError = error;
-  *pastTime = *currentTime;
+  Serial.print("Roll Angle [°]=");
+  Serial.print(AngleRoll);
+  Serial.print(" Pitch Angle [°]=");
+  Serial.print(AnglePitch);
+  Serial.print(" Yaw Angle [°]=");
+  Serial.print(AngleYaw);
+  Serial.print("\t");
 
-  return outputAngle;
+  yawAngle = PID(SETPOINT, AngleRoll, &currentTimeTVC, &pastTimeTVC, &pastError1, &integralError1);
+  pitchAngle = PID(SETPOINT, AnglePitch, &currentTimeTVC2, &pastTimeTVC2, &pastError2, &integralError2); // For current configuration, use the roll measurement
+
+  yawAxisServo.write(90+yawAngle); // 90 for the angle offset
+  pitchAxisServo.write(90+pitchAngle); // 90 for the angle offset
+
+
+  Serial.print(yawAngle);
+  Serial.print("\t");
+  Serial.print(pitchAngle);
+  Serial.println("\t");
+  
+  pastTime = currentTime;
+
+  // Parachute
+  // altitude = bmp.readAltitude(seaLevelPressure_hPa * 100);
+  // if ((altitude - prevAltitude) < - altitudeDescentThreshold) { // Need to modify threshold
+  //   parachuteEjectionServo.write(0);
+  //   while(1) {
+  //     Serial.println("Apogee Reached");
+  //   }
+  // }
+  // prevAltitude = altitude;
+
+  delay(10);
+
 }
 
+////////////////Set up transmission between MPU6050 and Microcontroller////////////////
 
+void gyro_signals(void) { 
+  Wire.beginTransmission(0x68);                  // Start I2C comms with gyro
+  Wire.write(0x1A);                              // Switch on low-pass filter
+  Wire.write(0x05);
+  Wire.endTransmission();
+
+  Wire.beginTransmission(0x68);
+  Wire.write(0x1B);
+  Wire.write(0x8);
+  Wire.endTransmission();                        // Set sensitivity scale factor
+
+  Wire.beginTransmission(0x68);
+  Wire.write(0x43);
+  Wire.endTransmission();                        // Access register storing gyro measurements
+
+  Wire.requestFrom(0x68,6);
+  int16_t GyroX = Wire.read()<<8 | Wire.read();   // Read gyro measurements around respective axes
+  int16_t GyroY = Wire.read()<<8 | Wire.read();
+  int16_t GyroZ = Wire.read()<<8 | Wire.read();
+
+  RateRoll = (float)GyroX/65.5;                  // Convert measurements to °/s
+  RatePitch = (float)GyroY/65.5;
+  RateYaw = (float)GyroZ/65.5;
+}
+
+////////////////Convert Measured Rotation Rates to Quaternion Form////////////////
+
+void updateQuaternion(Quaternion &q, float gx, float gy, float gz, float dt) {
+  // Convert gyroscope rates from degrees to radians
+  gx *= (M_PI / 180.0);
+  gy *= (M_PI / 180.0);
+  gz *= (M_PI / 180.0);
+
+  // Compute the quaternion derivative
+  float qw = 0.5 * (-q.x * gx - q.y * gy - q.z * gz);
+  float qx = 0.5 * (q.w * gx + q.y * gz - q.z * gy);
+  float qy = 0.5 * (q.w * gy - q.x * gz + q.z * gx);
+  float qz = 0.5 * (q.w * gz + q.x * gy - q.y * gx);
+
+  // Update the quaternion
+  q.w += qw * dt;
+  q.x += qx * dt;
+  q.y += qy * dt;
+  q.z += qz * dt;
+
+  // Normalize the quaternion
+  q.normalize();
+}
+
+////////////////Convert Quaternions to Euler Angles////////////////
 
 void QuaternionToEuler(Quaternion q, float *roll, float *pitch, float *yaw) {
     // Roll
@@ -503,4 +240,35 @@ void QuaternionToEuler(Quaternion q, float *roll, float *pitch, float *yaw) {
     double siny_cosp = 2 * (q.w * q.z + q.x * q.y);
     double cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z);
     *yaw = float(atan2(siny_cosp, cosy_cosp));
+}
+
+////////////////PID Controller////////////////
+
+double PID(double setPoint, double currentPoint, unsigned long *currentTime, unsigned long *pastTime, double *pastError, double *integralError) {
+  *currentTime = millis();
+
+  double timeChange = (*currentTime - *pastTime) / 1000.0; // timeChange in seconds
+
+  double error = setPoint - currentPoint;
+
+  double deriviativeError = (error - *pastError) / timeChange;
+
+  *integralError += error * timeChange;
+
+  // Serial.print(Kd * deriviativeError);
+  // Serial.print("\t");
+
+  double outputAngle = Kp * error + Ki * (*integralError) + Kd * deriviativeError;
+
+  double angleSaturation = 13;
+  if (outputAngle > angleSaturation) {
+    outputAngle = angleSaturation;
+  } else if (outputAngle < -angleSaturation) {
+    outputAngle = -angleSaturation;
+  }
+
+  *pastError = error;
+  *pastTime = *currentTime;
+
+  return outputAngle;
 }

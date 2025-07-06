@@ -13,5 +13,4 @@
 #define RED_LED_PIN 9
 #define START_BUTTON_PIN 7
 #define MICRO_SD_CARD_CS_PIN 10
-#define INTERRUPT_PIN 2
 #define seaLevelPressure_hPa 975.2
