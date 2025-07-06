@@ -95,10 +95,6 @@ void loop() {
       currentTime = millis();
       if ((currentTime - pastTime) >= timeInterval) {
         if (readMPU6050()) {
-          // Use the calculated angles from the new MPU6050 implementation
-          roll = AngleRoll;
-          pitch = AnglePitch;
-          yaw = AngleYaw;
 
           // Serial.print("Roll Angle [°]=");
           // Serial.print(AngleRoll);
@@ -107,6 +103,10 @@ void loop() {
           // Serial.print(" Yaw Angle [°]=");
           // Serial.print(AngleYaw);
           // Serial.print("\t");
+
+          roll = AngleRoll;
+          pitch = AnglePitch;
+          yaw = AngleYaw;
 
           double yawAngle = PID(0.0, yaw, &currentTimeTVC, &pastTimeTVC, &pastError1, &integralError1);
           double pitchAngle = PID(0.0, roll, &currentTimeTVC2, &pastTimeTVC2, &pastError2, &integralError2);
