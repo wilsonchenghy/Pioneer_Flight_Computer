@@ -1,6 +1,7 @@
 #include "TVC.h"
 #include "Config.h"
 
+
 float Kp = 0.4;
 float Ki = 0.05;
 float Kd = 0.15;
@@ -12,14 +13,17 @@ Servo pitchAxisServo;
 void initializeTVC() {
   yawAxisServo.attach(YAW_AXIS_SERVO_PIN);
   pitchAxisServo.attach(PITCH_AXIS_SERVO_PIN);
+
   yawAxisServo.write(90);
   pitchAxisServo.write(90);
 }
 
+
+//////////////// PID Controller ////////////////
 double PID(double setPoint, double currentPoint, unsigned long *currentTime, unsigned long *pastTime, double *pastError, double *integralError) {
   *currentTime = millis();
 
-  double timeChange = (*currentTime - *pastTime) / 1000.0;
+  double timeChange = (*currentTime - *pastTime) / 1000.0; // timeChange in seconds
 
   double error = setPoint - currentPoint;
 

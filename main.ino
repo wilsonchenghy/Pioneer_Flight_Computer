@@ -7,7 +7,7 @@
 #include "Utility.h"
 
 bool useMicroSDCard = false;
-bool useBMP180 = true;
+bool useBMP180 = false;
 bool useStartButton = false;
 float timeInterval = 20.0;
 State currentState = POWER_ON;
@@ -25,10 +25,13 @@ bool reachedApogee = false;
 bool apogeeAltitudeCondition = false;
 float altitudeDescentThreshold = 1.0;
 
+Servo parachuteEjectionServo;
+
 void setup() {
   pinMode(BLUE_LED_PIN, OUTPUT);
   pinMode(RED_LED_PIN, OUTPUT);
-  pinMode(START_BUTTON_PIN, INPUT);
+  if (useStartButton) pinMode(START_BUTTON_PIN, INPUT);
+
   Serial.begin(115200);
 
   initializeTVC();
@@ -36,10 +39,13 @@ void setup() {
   if (useBMP180) setupBMP180();
   if (useMicroSDCard) setupSDCard();
 
+  parachuteEjectionServo.attach(PARACHUTE_EJECTION_PIN)
+  parachuteEjectionServo.write(65);
+
   digitalWrite(BLUE_LED_PIN, HIGH);
-  yawAxisServo.write(90);
-  pitchAxisServo.write(90);
-  delay(1000);
+
+  // wait for start button being pressed to start
+  if (useStartButton) while(digitalRead(START_BUTTON_PIN) == LOW);
 
   currentState = SYSTEM_CHECK;
 }
@@ -90,10 +96,18 @@ void loop() {
           memcpy(&q, fifoBuffer, sizeof(q));
           QuaternionToEuler(q, &roll, &pitch, &yaw);
 
+          // Serial.print("Roll Angle [°]=");
+          // Serial.print(AngleRoll);
+          // Serial.print(" Pitch Angle [°]=");
+          // Serial.print(AnglePitch);
+          // Serial.print(" Yaw Angle [°]=");
+          // Serial.print(AngleYaw);
+          // Serial.print("\t");
+
           double yawAngle = PID(0.0, degrees(yaw), &currentTimeTVC, &pastTimeTVC, &pastError1, &integralError1);
           double pitchAngle = PID(0.0, degrees(roll), &currentTimeTVC2, &pastTimeTVC2, &pastError2, &integralError2);
 
-          yawAxisServo.write(90 - yawAngle);
+          yawAxisServo.write(90 + yawAngle);
           pitchAxisServo.write(90 + pitchAngle);
 
           if (useMicroSDCard) {
@@ -106,13 +120,14 @@ void loop() {
       if (useBMP180) {
         float currentAltitude = readAltitude();
         if ((currentAltitude - prevAltitude) < -altitudeDescentThreshold) {
-          apogeeAltitudeCondition = true;
+          reachedApogee = true;
+          // apogeeAltitudeCondition = true;
         }
         prevAltitude = currentAltitude;
 
-        if (apogeeAltitudeCondition && (mpu.dmpGetAccel(&aa, fifoBuffer), aa.x < 0)) {
-          reachedApogee = true;
-        }
+        // if (apogeeAltitudeCondition && (mpu.dmpGetAccel(&aa, fifoBuffer), aa.x < 0)) {
+        //   reachedApogee = true;
+        // }
       }
       if (reachedApogee) {
         currentState = APOGEE;
@@ -121,14 +136,12 @@ void loop() {
       break;
 
     case APOGEE:
-      yawAxisServo.write(0);
-      pitchAxisServo.write(0);
       digitalWrite(BLUE_LED_PIN, HIGH);
-      digitalWrite(RED_LED_PIN, HIGH);
-      delay(10000);
-      digitalWrite(BLUE_LED_PIN, LOW);
-      digitalWrite(RED_LED_PIN, LOW);
-      break;
+      parachuteEjectionServo.write(0); // release parachute
+      Serial.println("PARACHUTE RELEASED");
+      while (true) {
+        delay(1000); // prevent CPU hogging
+      };
 
     case ERROR:
       digitalWrite(RED_LED_PIN, HIGH);
